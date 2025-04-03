@@ -1,0 +1,26 @@
+FROM python:3.9.6-slim-buster
+# Download and install wait-for-it
+RUN apt-get update && apt-get install -y curl bash && rm -rf /var/lib/apt/lists/*
+RUN curl -k -o /usr/local/bin/wait-for-it https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh && chmod +x /usr/local/bin/wait-for-it
+
+ENV PYTHONUNBUFFERED=1
+
+# === Resolve the warning of ROOT user when running celery ===
+# Create a non-root user for the application and set appropriate directory permissions
+# And set the user to be the non-root user
+RUN adduser --disabled-password --gecos "" celeryuser \
+    && mkdir /app \
+    && chown -R celeryuser:celeryuser /app
+USER celeryuser
+# Add user-specific local bin to PATH
+ENV PATH=/home/celeryuser/.local/bin:$PATH
+# ===
+
+WORKDIR /app
+
+RUN pip3 install --upgrade pip
+COPY ./app/requirements.txt requirements.txt
+RUN pip3 install --user --no-cache-dir -r requirements.txt
+
+COPY ./app/fastapi_celery/ /app
+
