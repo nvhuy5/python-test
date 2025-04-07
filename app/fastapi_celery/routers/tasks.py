@@ -1,7 +1,7 @@
 import time
 import traceback
 import logging
-from utils import helpers
+from utils import log_helpers
 
 from fastapi import APIRouter
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,9 +15,9 @@ from models import task_info
 
 # ===
 # Set up logging
-logger_name = 'FastAPI'  # You can give your logger any name you prefer
-helpers.logging_config(logger_name)  # Apply the logging configuration
-logger = logging.getLogger(logger_name)  # Get the logger instance
+logger_name = 'Celery Task Routers'
+log_helpers.logging_config(logger_name)
+logger = logging.getLogger(logger_name)
 # ===
 
 router = APIRouter()
@@ -58,7 +58,7 @@ def start(request: task_info.StartTaskRequest):
         task_info["customer_name"] = request.customer_name
         task_info["task_name"] = task_name
         task_info["task_status"] = task_submit.status
-        task_info["task_steps"] = str(task_steps)  # Convert task_steps to string for PostgreSQL (JSON, Text, etc.)
+        task_info["task_steps"] = task_steps  # Convert task_steps to string for PostgreSQL (JSON, Text, etc.)
         
         # Insert task info into PostgreSQL (using SQLAlchemy)
         task_record = CeleryTask(

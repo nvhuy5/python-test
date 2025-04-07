@@ -22,11 +22,11 @@ services:
       - ./configs/postgresql/init-script-0.sql:/docker-entrypoint-initdb.d/000-init.sql
     networks:
       - db_network
-    healthcheck:
-      test: ["CMD", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    # healthcheck:
+    #   test: ["CMD", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+    #   interval: 5s
+    #   timeout: 5s
+    #   retries: 5
 
   # Redis DB to store statement of celery
   redis:
@@ -52,11 +52,11 @@ services:
       "--port", "${REDIS_PORT}",
       "--requirepass", "${REDIS_PASSWORD}"
     ]
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    # healthcheck:
+    #   test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+    #   interval: 5s
+    #   timeout: 5s
+    #   retries: 5
 
 # ===
 # Customize the network for all services

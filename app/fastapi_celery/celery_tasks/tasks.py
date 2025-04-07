@@ -3,15 +3,16 @@ from connections.postgres_conn import (
     CeleryTask
 )
 import traceback
-from functions.func_mapping import *
+from file_processors.func_mapping import *
 from celery.app import Celery
 from celery.result import AsyncResult
 import os
+from pathlib import Path
 
 # ===
 # Load environment variables from the .env file
 from dotenv import load_dotenv
-load_dotenv(dotenv_path='../../.env')
+load_dotenv(dotenv_path=f"{Path(__file__).parent.parent.parent.parent}/.env")
 # ===
 
 # celery configs

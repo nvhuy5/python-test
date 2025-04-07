@@ -5,11 +5,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import Column, Integer, String, Text, JSON
+from pathlib import Path
 
 # ===
 # Load environment variables from the .env file
 from dotenv import load_dotenv
-load_dotenv(dotenv_path='../../.env')
+load_dotenv(dotenv_path=f"{Path(__file__).parent.parent.parent.parent}/.env")
 # ===
 
 # Setup SQLAlchemy Base and session
@@ -52,6 +53,10 @@ DATABASE_URL = os.environ.get(
 )
 engine = create_engine(
     DATABASE_URL,
+    pool_size=20,            # Increase pool size (default is 5)
+    max_overflow=10,         # Max overflow connections (default is 10)
+    pool_timeout=30,         # Timeout for obtaining a connection (default is 30)
+    pool_recycle=3600,        # Recycle connections after 1 hour (default is -1, no recycling)
     connect_args={'options': f'-csearch_path={SCHEMA_NAME},public'}
 )
 
