@@ -1,38 +1,8 @@
-services:
-  # ===
-  # PostgreSQL to store data
-  postgres:
-    container_name: "postgres_db"
-    # image: postgres:latest
-    build:
-      context: .
-      dockerfile: postgres_Dockerfile
-    user: postgres
-    labels:
-      tag: "database"
-    env_file:
-      - .env
-    ports:
-      - ${POSTGRES_PORT}:${POSTGRES_PORT}
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./configs/postgresql/init-script-0.sql:/docker-entrypoint-initdb.d/000-init.sql
-      - ./configs/postgresql/init-script-1.sql:/docker-entrypoint-initdb.d/001-init.sql
-    networks:
-      - db_network
-    healthcheck:
-      test: ["CMD", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+version: "3.8"
 
-  # Redis DB to store statement of celery
+services:
   redis:
-    container_name: "redis_db"
+    container_name: "dksh_datahub_redis_db"
     image: "redis:7-alpine"
     labels:
       tag: "database"
@@ -49,21 +19,17 @@ services:
       - redis_data:/data
     networks:
       - db_network
-    command: [
-      "redis-server", "/usr/local/etc/redis/redis.conf",
-      "--port", "${REDIS_PORT}",
-      "--requirepass", "${REDIS_PASSWORD}"
-    ]
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf --port ${REDIS_PORT} --requirepass ${REDIS_PASSWORD}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
-  # ===
-  # Web to monitor tasks with celery
   web:
-    container_name: "celery_app"
+    container_name: "dksh_datahub_celery_app"
     user: celeryuser
     build:
       context: .
@@ -76,26 +42,20 @@ services:
       - .env
     environment:
       REMAP_SIGTERM: SIGQUIT
-      CELERY_SCHEMA: ${CELERY_SCHEMA}
       REDIS_URL: redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/0
-      POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/0
-      CELERY_RESULT_BACKEND: db+postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?options=--search_path%3D${CELERY_SCHEMA:-public}
     networks:
       - web_network
-      - db_network  # Also connect to db network for DB access
-    command: [
-      "wait-for-it", "redis:${REDIS_PORT}",
-      "--", "wait-for-it", "postgres:${POSTGRES_PORT}",
-      "--", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "${APP_PORT}", "--reload"
-    ]
+      - db_network
+    command: >
+      wait-for-it ${REDIS_HOST}:${REDIS_PORT} --  uvicorn main:app --host 0.0.0.0 --port ${APP_PORT} --reload
     depends_on:
-      - postgres
       - redis
+    restart: unless-stopped
+
   worker:
+    container_name: "dksh_datahub_worker"
     user: celeryuser
-    deploy:
-      replicas: 2
     build:
       context: .
       dockerfile: celery_Dockerfile
@@ -103,41 +63,36 @@ services:
       tag: "celery_worker"
     env_file:
       - .env
+    volumes:
+      - .aws:/home/celeryuser/.aws
     environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       REMAP_SIGTERM: SIGQUIT
-      CELERY_SCHEMA: ${CELERY_SCHEMA}
       REDIS_URL: redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/0
-      POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/0
-      CELERY_RESULT_BACKEND: db+postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?options=--search_path%3D${CELERY_SCHEMA:-public}
       CELERY_TRACK_STARTED: 1
-      # Config the celery worker within every node
-      CELERY_CONCURRENCY: ${CELERY_CONCURRENCY}  # Start with the number of worker processes
-      CELERY_POOL: ${CELERY_POOL}  # Pool implementation (prefork, solo, gevent)
-      CELERY_MAX_TASKS_PER_CHILD: ${CELERY_MAX_TASKS_PER_CHILD}  # Max number of tasks per worker before restart
-      CELERY_MAX_MEMORY_PER_CHILD: ${CELERY_MAX_MEMORY_PER_CHILD}  # Max memory in KB before worker restart
-      CELERY_MIN_PROCESSES: ${CELERY_MIN_PROCESSES}
-      CELERY_MAX_PROCESSES: ${CELERY_MAX_PROCESSES}
+      CELERY_CONCURRENCY: ${CELERY_CONCURRENCY}
+      CELERY_POOL: ${CELERY_POOL}
+      CELERY_MAX_TASKS_PER_CHILD: ${CELERY_MAX_TASKS_PER_CHILD}
+      CELERY_MAX_MEMORY_PER_CHILD: ${CELERY_MAX_MEMORY_PER_CHILD}
     networks:
       - celery_worker_network
-      - db_network  # Also connect to db network for DB access
-    command: [
-      "wait-for-it", "redis:${REDIS_PORT}",
-      "--", "wait-for-it", "postgres:${POSTGRES_PORT}",
-      "--", "celery", "-A", "celery_tasks.tasks.celery", "worker", "-E", "--loglevel=info",
-      "--concurrency=${CELERY_CONCURRENCY}",
-      "--pool=${CELERY_POOL}",
-      "--max-tasks-per-child=${CELERY_MAX_TASKS_PER_CHILD}",
-      "--max-memory-per-child=${CELERY_MAX_MEMORY_PER_CHILD}",
-      # Enable autoscaling
-      "--autoscale=${CELERY_MAX_PROCESSES},${CELERY_MIN_PROCESSES}"
-    ]
+      - db_network
+    command: >
+      wait-for-it ${REDIS_HOST}:${REDIS_PORT} -- celery -A celery_worker worker -E --loglevel=info --concurrency=${CELERY_CONCURRENCY} --pool=${CELERY_POOL} --max-tasks-per-child=${CELERY_MAX_TASKS_PER_CHILD} --max-memory-per-child=${CELERY_MAX_MEMORY_PER_CHILD}
+    healthcheck:
+      test: [ "CMD", "pgrep", "celery" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     depends_on:
       - web
-      - postgres
       - redis
+    restart: unless-stopped
+    mem_limit: 512m
+
   flower:
-    container_name: "monitoring_app"
+    container_name: "dksh_datahub_monitoring_app"
     user: celeryuser
     build:
       context: .
@@ -146,47 +101,35 @@ services:
       tag: "monitoring_app"
     env_file:
       - .env
-    command: [
-      "wait-for-it", "redis:${REDIS_PORT}",
-      "--", "wait-for-it", "postgres:${POSTGRES_PORT}",
-      "--", "celery", "-A", "celery_tasks.tasks.celery", "flower", "--port=${FLOWER_PORT}"
-    ]
+    volumes:
+      - .aws:/home/celeryuser/.aws
+    command: >
+      wait-for-it ${REDIS_HOST}:${REDIS_PORT} --  celery -A celery_worker flower --port=${FLOWER_PORT}
     ports:
       - ${FLOWER_PORT}:${FLOWER_PORT}
     networks:
       - web_network
-      - db_network  # Also connect to db network for DB access
+      - db_network
     environment:
-      CELERY_SCHEMA: ${CELERY_SCHEMA}
-      POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}
       CELERY_BROKER_URL: redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/0
-      CELERY_RESULT_BACKEND: db+postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${POSTGRES_HOST}:${POSTGRES_PORT}/${POSTGRES_DB}?options=--search_path%3D${CELERY_SCHEMA:-public}
       FLOWER_UNAUTHENTICATED_API: 1
     depends_on:
       - web
       - worker
       - redis
+    restart: unless-stopped
 
-# ===
-# Customize the network for all services
 networks:
   web_network:
-    name: web_network  # Customize the name of the network
-    driver: bridge  # You can use other drivers like 'overlay', 'host', etc.
-    # == Optional: Configure IPAM, driver options, etc.
-    # ipam:
-    #   driver: default
-    #   config:
-    #     - subnet: "172.28.0.0/16"
-    #     - gateway: "172.28.0.1"
+    name: web_network
+    driver: bridge
   db_network:
     name: db_network
     driver: bridge
   celery_worker_network:
     name: celery_worker_network
     driver: bridge
+
 volumes:
   redis_data:
-    driver: local
-  postgres_data:
     driver: local

@@ -1,38 +1,25 @@
-import os
-from pathlib import Path
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from connections.postgres_conn import *
-from routers import tasks, file_processor
-from startup import init_mapping_rules
-
-# ===
-# Load environment variables from the .env file
-from dotenv import load_dotenv
-load_dotenv(dotenv_path=f"{Path(__file__).parent.parent.parent}/.env")
-# ===
+from routers import api_file_processor, api_healthcheck
+import config_loader
 
 # Define the lifespan event handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup logic
-    init_mapping_rules()
+    # # Startup logic
     # Application runs here, during this time the app is alive
     yield
     # Shutdown logic can go here if needed (after `yield`)
 
 # Create the FastAPI app with the lifespan context manager
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, root_path="/fastapi")
 
 # Include routers
-app.include_router(tasks.router)
-app.include_router(file_processor.router)
+app.include_router(api_healthcheck.router)
+app.include_router(api_file_processor.router)
 
 # Run the app with uvicorn (only when this script is executed directly)
-if __name__ == '__main__':
+if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=int(os.environ.get('APP_PORT', 8000))
-    )
+
+    uvicorn.run(app, host="0.0.0.0", port=int(config_loader.get_env_variable("APP_PORT", 8000)))
