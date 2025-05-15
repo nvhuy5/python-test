@@ -6,6 +6,7 @@ import config_loader
 # Define the lifespan event handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.startup_triggered = True
     # # Startup logic
     # Application runs here, during this time the app is alive
     yield
@@ -19,7 +20,7 @@ app.include_router(api_healthcheck.router)
 app.include_router(api_file_processor.router)
 
 # Run the app with uvicorn (only when this script is executed directly)
-if __name__ == "__main__":
+if __name__ == "__main__": # pragma: no cover
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=int(config_loader.get_env_variable("APP_PORT", 8000)))

@@ -4,7 +4,7 @@ from typing import Type
 from dataclasses import dataclass
 
 # Local Application Imports
-from template_processors import file_processors
+from template_processors import file_processors, master_data_processors
 
 @dataclass
 class ProcessorMeta:
@@ -49,3 +49,13 @@ class TemplateProcessor(Enum):
         input_type  = "xls or xlsx",
         output_type = "dataframe"
     )
+
+    # ================================================================== #
+    # === Registry the template to specific processor for masterdata === #
+    TXT_MASTERADATA_TEMPLATE = ProcessorMeta(
+        cls         = master_data_processors.txt_master_data_processor.MasterDataProcessor,
+        description = "TXT layout processor for metadata template",
+        input_type  = "txt",
+        output_type = "dataframe"
+    )
+

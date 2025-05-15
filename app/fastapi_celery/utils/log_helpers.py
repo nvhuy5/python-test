@@ -11,18 +11,7 @@ def logging_config(logger: str):
     if log.hasHandlers():
         log.handlers.clear()
 
-    # Find the folder containing main.py
-    project_root = next(
-        (p for p in Path(__file__).resolve().parents if (p / "main.py").exists()),
-        None,
-    )
-    if project_root is None:
-        raise RuntimeError("Logging setup failed: main.py not found.")
-
-    # log_dir = project_root / "celery_logs"
-    # log_dir.mkdir(parents=True, exist_ok=True)
-    # log_file = log_dir / "celery_worker.log"
-
+    # Create a celery_logs directory in temporary directory
     log_dir = Path(tempfile.gettempdir()) / "celery_logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "celery_worker.log"

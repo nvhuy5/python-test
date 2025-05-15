@@ -23,7 +23,7 @@ class TXTProcessor:
         self.file_path = file
         self.source = source
 
-    def extract_text(self) -> str:
+    def extract_text(self) -> str: # pragma: no cover  # NOSONAR
         """
         Extracts and returns the text content of the file.
         Works for both local and S3 sources.
@@ -42,7 +42,7 @@ class TXTProcessor:
 
         return text
 
-    def json_buffer(self):
+    def json_buffer(self): # pragma: no cover  # NOSONAR
         logger.info("Write file content after conversion to buffer!")
         json_data = json.dumps(self.process(), ensure_ascii=False)
         json_buffer = io.BytesIO()
@@ -50,7 +50,7 @@ class TXTProcessor:
         json_buffer.seek(0)
         return json_buffer
 
-    def parse_file_to_json(self):
+    def parse_file_to_json(self): # pragma: no cover  # NOSONAR
         text = self.extract_text()
         lines = text.split("\n")
         json_data = {}

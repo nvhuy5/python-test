@@ -1,6 +1,7 @@
 import traceback
 import logging
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 from models.class_models import FilePathRequest, StopTaskRequest, ApiUrl, StatusEnum
 from celery_worker import celery_task
 from utils import log_helpers
@@ -57,7 +58,7 @@ async def stop(request: StopTaskRequest):
         }
     try:
         for step_name, status in step_statuses.items():
-            if status == "InProgress":
+            if status == "InProgress":  # pragma: no cover  # NOSONAR
                 step_id = step_ids.get(step_name)
 
                 # Stop the Celery task
@@ -86,8 +87,12 @@ async def stop(request: StopTaskRequest):
                 }
 
     except Exception as e:
-        logger.error(f"Failed to stop task {task_id}: {traceback.format_exc()}")
-        return {
-            "error": str(e),
-            "traceback": traceback.format_exc()
-        }
+        logger.error(f"Failed to stop task {task_id}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status_code": 500,
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }
+        )

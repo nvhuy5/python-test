@@ -32,7 +32,8 @@ class BEConnector:
             try:
                 response = await client.request(method, self.api_url, json=self.body_data)
                 response.raise_for_status()
-                return response.json().get("data", {})
+                response_data = response.json()
+                return response_data.get("data", {})
             except httpx.HTTPStatusError as e:
                 logger.error(f"{method} error {self.api_url}: {e.response.status_code} - {e.response.text}")
             except Exception as e:

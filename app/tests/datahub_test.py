@@ -1,8 +1,85 @@
 import pytest
 from pathlib import Path
-
+import unittest
+from unittest.mock import patch, MagicMock
 from fastapi_celery.template_processors.file_processors import excel_processor, pdf_processor, txt_processor
 from fastapi_celery.utils.ext_extraction import FileExtensionProcessor
+from fastapi_celery.template_processors.file_processor import FileProcessor
+from fastapi_celery.models.class_models import DocumentType
+
+class TestFileProcessor(unittest.TestCase):
+    def setUp(self):
+        self.file_path = "/tmp/testfile.pdf"
+        self.processor = FileProcessor(self.file_path)
+
+    @patch("fastapi_celery.template_processors.workflow_nodes.extract_metadata.ext_extraction.FileExtensionProcessor")
+    def test_extract_metadata_success(self, mock_ext_processor):
+        mock_instance = MagicMock()
+        mock_instance.file_path_parent = "/tmp"
+        mock_instance.file_name = "testfile.pdf"
+        mock_instance.file_extension = ".pdf"
+        mock_ext_processor.return_value = mock_instance
+
+        result = self.processor.extract_metadata()
+
+        self.assertTrue(result)
+        self.assertIn("file_path", self.processor.file_record)
+
+    @patch("fastapi_celery.template_processors.workflow_nodes.extract_metadata.ext_extraction.FileExtensionProcessor", side_effect=FileNotFoundError("not found"))
+    def test_extract_metadata_file_not_found(self, mock_ext_processor):
+        result = self.processor.extract_metadata()
+        self.assertFalse(result)
+
+    @patch("fastapi_celery.template_processors.workflow_nodes.extract_metadata.ext_extraction.FileExtensionProcessor", side_effect=ValueError("bad value"))
+    def test_extract_metadata_value_error(self, mock_ext_processor):
+        result = self.processor.extract_metadata()
+        self.assertFalse(result)
+
+    @patch("fastapi_celery.template_processors.workflow_nodes.extract_metadata.ext_extraction.FileExtensionProcessor", side_effect=Exception("unknown"))
+    def test_extract_metadata_exception(self, mock_ext_processor):
+        result = self.processor.extract_metadata()
+        self.assertFalse(result)
+
+    @patch("fastapi_celery.template_processors.processor_registry.TemplateProcessor.PDF_0C_RL_H75_K0.create_instance")
+    def test_parse_file_to_json_success(self, mock_create_instance):
+        self.processor.file_record = {"file_extension": ".pdf"}
+        self.processor.document_type = DocumentType.ORDER
+        mock_instance = MagicMock()
+        mock_instance.parse_file_to_json.return_value = {"parsed": True}
+        mock_create_instance.return_value = mock_instance
+
+        result = self.processor.parse_file_to_json()
+        self.assertEqual(result, {"parsed": True})
+
+    def test_parse_file_to_json_unsupported_extension(self):
+        self.processor.file_record = {"file_extension": ".exe"}
+        result = self.processor.parse_file_to_json()
+        self.assertIsNone(result)
+
+    @patch("fastapi_celery.template_processors.processor_registry.TemplateProcessor.PDF_0C_RL_H75_K0.create_instance", side_effect=Exception("boom"))
+    def test_parse_file_to_json_exception(self, mock_create_instance):
+        self.processor.file_record = {"file_extension": ".pdf"}
+        result = self.processor.parse_file_to_json()
+        self.assertIsNone(result)
+
+    @patch("fastapi_celery.template_processors.workflow_nodes.write_json_to_s3.read_n_write_s3.write_json_to_s3")
+    def test_write_json_to_s3_success(self, mock_write_json):
+        self.processor.file_record = {"some": "meta"}
+        self.processor.document_type = DocumentType.ORDER
+        mock_write_json.return_value = {"s3_path": "s3://bucket/file.json"}
+        result = self.processor.write_json_to_s3({"json": "data"})
+        self.assertEqual(result, {"s3_path": "s3://bucket/file.json"})
+
+    @patch("fastapi_celery.template_processors.workflow_nodes.write_json_to_s3.read_n_write_s3.write_json_to_s3", side_effect=Exception("write failed"))
+    def test_write_json_to_s3_exception(self, mock_write_json):
+        self.processor.file_record = {"some": "meta"}
+        self.processor.document_type = DocumentType.ORDER
+        result = self.processor.write_json_to_s3({"json": "data"})
+        self.assertIsNone(result)
+
+    def test_validation_placeholder(self):
+        # Placeholder check
+        self.assertIsNone(self.processor.validation())
 
 
 # Pytest fixture to get the base path pointing to samples directory

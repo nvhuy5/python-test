@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   redis:
     container_name: "dksh_datahub_redis_db"

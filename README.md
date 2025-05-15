@@ -9,10 +9,6 @@ i. Create an `.env` file with content
 COMPOSE_PROJECT_NAME=dksh-datahub
 POSTGRES_DB=dksh_datahub_db
 CELERY_SCHEMA=celery
-POSTGRES_USER=***
-POSTGRES_PASSWORD=***
-POSTGRES_HOST=***
-POSTGRES_PORT=5432
 REDIS_PASSWORD=***
 REDIS_HOST=redis
 REDIS_PORT=6379
@@ -22,6 +18,7 @@ CELERY_CONCURRENCY=0
 CELERY_POOL=prefork
 CELERY_MAX_TASKS_PER_CHILD=100
 CELERY_MAX_MEMORY_PER_CHILD=50000
+BASE_API_URL=https://dev-datahub.dksh.b2b.com.my
 AWS_REGION=ap-southeast-1
 
 ```
@@ -88,6 +85,7 @@ sudo docker system prune -a --volumes
 
 # Pytest
 1. Structure of dksh-datahub-fastapi
+```txt
 .
 ├── sonar-project.properties
 ├── app
@@ -99,6 +97,7 @@ sudo docker system prune -a --volumes
     └── tests
         ├── ..._test.py
         └── samples
+```
 
 2. Install all requirement packages
 ```bash
@@ -118,6 +117,5 @@ set SONAR_TOKEN=<sonarqube-server-token>
 
 # run pysonar from the project root directory - dksh-datahub-fastapi
 # where the sonar-project.properties file is located
-pysonar
-# -v --verbose
+pysonar # -v --verbose
 ```

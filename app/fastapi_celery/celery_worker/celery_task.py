@@ -10,7 +10,7 @@ from celery import shared_task
 from .step_handler import execute_step
 from connections.be_connection import BEConnector
 from template_processors.file_processor import FileProcessor
-from models.class_models import WorkflowModel, ApiUrl, StatusEnum, WorkflowSession
+from models.class_models import WorkflowModel, ApiUrl, StatusEnum, WorkflowSession, StartStep
 from utils import log_helpers
 import config_loader
 
@@ -40,12 +40,8 @@ def task_execute(self, file_path: str, celery_id: str) -> str:
 
 
 async def handle_task(file_path: str, celery_id: str):
-    """
-    Actual async task logic
-    """
     logger.info(f"[{celery_id}] Start processing file: {file_path}")
-
-    file_processor = FileProcessor(bucket_name=config_loader.get_config_value("s3_buckets", "converted_files"), file_path=file_path)
+    file_processor = FileProcessor(file_path=file_path)
     file_processor.extract_metadata()
 
     body_data = {
@@ -53,15 +49,16 @@ async def handle_task(file_path: str, celery_id: str):
         "fileName": file_processor.file_record["file_name"],
         "fileExtension": file_processor.file_record["file_extension"],
     }
+    logger.info(f"File path ({file_path}) parsed result:\n{body_data}")
+    logger.info(f"The document type of file_path - {file_path}: {file_processor.document_type}")
 
     # === Fetch workflow ===
     workflow = BEConnector(ApiUrl.workflow_filter, body_data=body_data)
     workflow_response = await workflow.post()
-
     if not workflow_response:
         logger.error(f"[{celery_id}] Failed to fetch workflow for file: {file_path}")
         return
-
+    logger.info(f"Workflow details:\n{workflow_response}")
     workflow_model = WorkflowModel(**workflow_response)
 
     # === Start session ===
@@ -74,32 +71,43 @@ async def handle_task(file_path: str, celery_id: str):
     if not session_response:
         logger.error(f"[{celery_id}] Failed to create workflow session.")
         return
-
+    logger.info(f"Session details:\n{session_response}")
     workflow_session = WorkflowSession(**session_response)
-    data_input = None
 
+    # === Init context ===
+    context = {
+        "input_data": None,
+        "file_path": file_path,
+        "celery_id": celery_id,
+    }
+
+    # === Process steps ===
     for step in workflow_model.workflowSteps:
         logger.info(f"[{celery_id}] Starting step: {step.stepName}")
-        
+
         # Start step
-        await BEConnector(ApiUrl.workflow_step_start, {
+        step_response = await BEConnector(ApiUrl.workflow_step_start, {
             "sessionId": workflow_session.id,
             "stepId": step.workflowStepId
         }).post()
+        step_response_model = StartStep(**step_response)
 
-        # Execute step
-        data_output = await execute_step(file_processor, step, data_input)
+        # Execute step (context is updated internally)
+        await execute_step(file_processor, step, context, celery_id)
 
         # Finish step
+        step_output = (
+            f"{context['materialized_step_data_loc']}/{file_processor.file_record['file_name'].rsplit('.', 1)[0]}.json"
+            if context['materialized_step_data_loc']
+            else None
+        )
         await BEConnector(ApiUrl.workflow_step_finish, {
-            "workflowHistoryId": workflow_model.id,
+            "workflowHistoryId": step_response_model.workflowHistoryId,
             "code": StatusEnum.SUCCESS,
             "message": "",
-            "dataInput": data_input,
-            "dataOutput": data_output
+            "dataInput": "input_data",
+            "dataOutput": step_output,
         }).post()
-
-        data_input = data_output
 
     # === Finish session ===
     await BEConnector(ApiUrl.workflow_session_finish, {
@@ -107,5 +115,7 @@ async def handle_task(file_path: str, celery_id: str):
         "code": StatusEnum.SUCCESS,
         "message": ""
     }).post()
+
+    file_processor.write_raw_to_s3(file_path)
 
     logger.info(f"[{celery_id}] Finished processing file: {file_path}")

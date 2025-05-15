@@ -1,0 +1,87 @@
+image: python:3.13-alpine3.21
+
+definitions:
+  caches:
+    sonar: ~/.sonar/cache
+  steps:
+    ## Python Setup, Install Dependencies, and Test
+    - step: &python_setup_and_test
+        name: Setup Python, Install Dependencies, and Run Tests
+        caches:
+          - pip
+        script:
+          - cd app
+          - pip install -r requirements.txt
+          - pytest --cov=app/fastapi_celery --cov-report=xml
+        artifacts:
+          - app/coverage.xml
+
+    ## SonarQube Code Quality Scan
+    - step: &sonarqube_scan
+        name: Run SonarQube Scan
+        caches:
+          - sonar
+        script:
+          - pipe: sonarsource/sonarqube-scan:4.0.0
+            variables:
+              SONAR_HOST_URL: $SONAR_HOST
+              SONAR_TOKEN: $SONAR_TOKEN
+              EXTRA_ARGS: |
+                -Dsonar.branch.name=$BITBUCKET_BRANCH
+
+    ## Wait for SonarQube Quality Gate Validation
+    - step: &sonarqube_quality_gate
+        name: Wait for SonarQube Quality Gate
+        script:
+          - pipe: sonarsource/sonarqube-quality-gate:1.2.1
+            variables:
+              SONAR_HOST_URL: $SONAR_HOST
+              SONAR_TOKEN: $SONAR_TOKEN
+              EXTRA_ARGS: |
+                -Dsonar.branch.name=$BITBUCKET_BRANCH
+
+    ## SSH & Deployment to EC2 Server (DEV)
+    - step: &deploy_to_ec2_dev
+        name: Deploy to EC2 (DEV)
+        deployment: dev
+        script:
+          - pipe: atlassian/ssh-run:0.8.1
+            variables:
+              SERVER: $EC2_IP
+              SSH_USER: ec2-user
+              COMMAND: |
+                cd ~/dksh/dksh-datahub-fastapi
+                git checkout dev
+                git pull
+                docker-compose up -d --build
+
+    ## SSH & Deployment to EC2 Server (QA)
+    - step: &deploy_to_ec2_qa
+        name: Deploy to EC2 (QA)
+        deployment: qa
+        script:
+          - pipe: atlassian/ssh-run:0.8.1
+            variables:
+              SERVER: $EC2_IP
+              SSH_USER: ec2-user
+              COMMAND: |
+                cd ~/dksh/dksh-datahub-fastapi
+                git checkout qa
+                git pull
+                docker-compose up -d --build
+
+pipelines:
+  ## Deployment for Dev and QA Branches
+  branches:
+    dev:
+      - step: *python_setup_and_test
+      - step: *sonarqube_scan
+      - step: *sonarqube_quality_gate
+      - step: *deploy_to_ec2_dev
+
+    qa:
+      - step: *python_setup_and_test
+      - step: *sonarqube_scan
+      - step: *sonarqube_quality_gate
+      - step: *deploy_to_ec2_qa
+      
